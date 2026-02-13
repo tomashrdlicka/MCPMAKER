@@ -77,112 +77,147 @@ Every workflow MCPMAKER learns makes it smarter about that web app. Record "chec
 2. **Learn** - Claude analyzes the recordings: filters noise, correlates clicks to API calls, identifies variable vs fixed parts, detects multi-step data chains. Produces a WorkflowDefinition (internal, user never sees this).
 3. **Play** - User presses Play in the extension popup. The agent drives the browser visually, executing each learned step. API call monitoring validates each step succeeded. User watches it happen in real time.
 
-## 4. User Flow (Step by Step)
+## 4. Reference Use Case: Hypeddit Song Downloads
+
+The first use case that validates MCPMAKER. Real problem, felt daily.
+
+### The pain
+
+[Hypeddit](https://hypeddit.com) is a music promotion platform where producers share free downloads. But every download is gated: before you can download a track, you must complete "gate steps" - follow the artist on SoundCloud, like the track on Spotify, repost, subscribe to a mailing list, etc. Each gate step involves pop-ups, OAuth flows, and confirmation clicks.
+
+For a single track: 3-6 gate clicks, 1-3 pop-ups, 30-90 seconds of tedium.
+For a DJ building a set who wants 20 tracks: 20 minutes of mindless clicking.
+
+### What MCPMAKER does
+
+Record the gate-clicking process once. Next time, navigate to any Hypeddit download page, press Play, and watch the agent click through all the gates for you. The song downloads automatically.
+
+### The flow
+
+#### Recording (one time)
+1. User goes to a Hypeddit track page (e.g., `hypeddit.com/track/3gnesk`)
+2. Opens MCPMAKER extension, taps **Record**
+3. Small red recording dot appears in corner
+4. User goes through the download gates normally:
+   - Clicks "Download" button
+   - Gate 1: "Follow artist on SoundCloud" pop-up appears -> clicks Follow -> pop-up closes
+   - Gate 2: "Like this track" -> clicks Like
+   - Gate 3: "Repost this track" -> clicks Repost
+   - Gate 4: "Follow on Spotify" pop-up -> clicks Follow -> pop-up closes
+   - Download unlocks -> file downloads
+5. Opens extension, taps **Stop**
+6. Extension shows:
+   ```
+   +-----------------------------------------+
+   |  New Workflow Learned                    |
+   |                                          |
+   |  "Download track on Hypeddit"            |
+   |  (auto-named from page + actions)        |
+   |                                          |
+   |  8 steps recorded                        |
+   |  Ready to play                           |
+   |                                          |
+   |  [Rename]  [Record Again]  [Done]        |
+   +-----------------------------------------+
+   ```
+
+**Behind the scenes** (user never sees this):
+- Extension captured every click + every network request (SoundCloud API follow call, Spotify API like call, Hypeddit gate-unlock API, download URL)
+- Recordings sent to local MCPMAKER engine
+- Claude analyzes: "Steps 1-4 are gate completions (follow, like, repost, follow). Step 5 is the download trigger. The track URL is the variable. Gate steps use SoundCloud/Spotify APIs with the user's auth cookies."
+- Produces a WorkflowDefinition with 5 steps, variable: `track_page_url`
+
+#### Playing (every time after)
+1. User navigates to a different Hypeddit track page
+2. Opens MCPMAKER extension popup
+3. Sees:
+   ```
+   +-----------------------------------------+
+   |  hypeddit.com                            |
+   |                                          |
+   |  > Download track             [Play]     |
+   |                                          |
+   |  [Record New]                            |
+   +-----------------------------------------+
+   ```
+4. Taps **Play**
+5. **The agent takes over:**
+   - Clicks the Download button (user sees the click, element pulses briefly)
+   - Gate 1 pop-up appears -> agent clicks Follow -> pop-up closes
+   - Gate 2 -> agent clicks Like
+   - Gate 3 -> agent clicks Repost
+   - Gate 4 pop-up -> agent clicks Follow -> pop-up closes
+   - Download unlocks -> file downloads
+   - Each completed gate shows a small checkmark in the MCPMAKER overlay
+6. Extension shows completion:
+   ```
+   +-----------------------------------------+
+   |  Done!                                   |
+   |                                          |
+   |  "Track Name - Artist" downloaded        |
+   |  Saved to Downloads folder               |
+   |                                          |
+   |  [Play Again]  [Close]                   |
+   +-----------------------------------------+
+   ```
+
+Total time: ~5 seconds of watching instead of 60 seconds of clicking.
+
+### Why this use case is perfect for MVP
+
+1. **Repetitive**: Same gate pattern on every track, just different track URLs
+2. **Multi-step**: 4-6 gate steps per download, each with pop-ups. Tests the multi-step chain engine.
+3. **Pop-up handling**: Gates open pop-ups for SoundCloud/Spotify auth. Tests the agent's ability to handle window/tab switching.
+4. **Immediate value**: The time savings are felt instantly. No explaining needed.
+5. **Non-technical user**: DJs and producers downloading tracks are not developers.
+6. **API-backed**: Each gate click triggers real API calls (SoundCloud follow, Spotify like). MCPMAKER can validate each gate was actually completed.
+
+### Specific technical challenges this use case surfaces
+
+- **Pop-up windows**: Gate steps open OAuth pop-ups in new windows. The agent needs to detect the new window, interact with it, and return to the main tab.
+- **Already-completed gates**: If you already follow the artist, the gate might auto-complete or show differently. The agent needs to handle this gracefully.
+- **Auth state**: The user must already be logged into SoundCloud/Spotify. MCPMAKER should detect if auth is missing and say "Please log into SoundCloud first" rather than failing silently.
+- **Variable gate count**: Different tracks have different numbers of gates (2-6). The workflow needs to handle "keep completing gates until download unlocks" rather than a fixed step count.
+- **Download trigger detection**: How to know the download actually started. Monitor for a file download event or a specific API response.
+
+## 5. General User Flow
+
+The Hypeddit use case above is the first implementation. The general flow applies to any web workflow:
 
 ### First-time setup
 1. User installs MCPMAKER Chrome extension from Chrome Web Store
 2. On first open, extension asks: "Paste your Anthropic API key" with a link to where to get one
 3. Done. No other setup.
 
-### Recording a workflow
+### Recording any workflow
 1. User opens the extension popup, taps **Record**
-2. A small red recording indicator appears in the corner of the page (like a screen recorder)
-3. User performs the workflow normally in the browser:
-   - Navigates to vendor portal
-   - Types order number
-   - Clicks search
-   - Reads the result
+2. A small red recording indicator appears in the corner of the page
+3. User performs the workflow normally
 4. User opens extension popup and taps **Stop**
-5. Extension shows a simple summary card:
-   ```
-   +-----------------------------------------+
-   |  New Workflow Learned                    |
-   |                                          |
-   |  "Check order on VendorPortal"           |
-   |  (auto-named from page title + actions)  |
-   |                                          |
-   |  4 steps recorded                        |
-   |  Ready to play                           |
-   |                                          |
-   |  [Rename]  [Record Again]  [Done]        |
-   +-----------------------------------------+
-   ```
+5. Extension shows a summary card with auto-generated name (from page title + actions observed)
 6. User can rename it or just tap Done
 
-**Behind the scenes** (user never sees this):
-- Extension captured DOM events + network traffic
-- Recordings sent to local MCPMAKER engine
-- Claude analyzes and produces a WorkflowDefinition
-- The workflow is now "learned" and ready
+**Behind the scenes**: Extension captured DOM events + network traffic, sent to local engine, Claude analyzed and produced a WorkflowDefinition.
 
 ### Improving accuracy (optional, prompted naturally)
 After the first successful Play, extension gently suggests:
-"Want to make this even more reliable? Record it one more time with a different order number."
+"Want to make this even more reliable? Record it one more time with a different [variable]."
 
-Multiple recordings help MCPMAKER identify:
-- Which parts are variable (order ID) vs fixed (URL patterns)
-- Which network calls are consistent (the real API) vs noise (ads, analytics)
-- The required vs optional parameters
+Multiple recordings help MCPMAKER identify what varies vs what's fixed. But one recording is enough to start.
 
-But one recording is enough to start. The tool works from recording one.
-
-### Playing a workflow
-1. User navigates to vendorportal.com
-2. Opens extension popup
-3. Sees their saved workflows for this site:
-   ```
-   +-----------------------------------------+
-   |  VendorPortal.com                        |
-   |                                          |
-   |  > Check order status          [Play]    |
-   |  > Download monthly invoices   [Play]    |
-   |  > Update shipping address     [Play]    |
-   |                                          |
-   |  [Record New]                            |
-   +-----------------------------------------+
-   ```
-4. Taps **Play** on "Check order status"
-5. If the workflow needs input, a simple form appears:
-   ```
-   +-----------------------------------------+
-   |  Check order status                      |
-   |                                          |
-   |  Order number: [          ]              |
-   |                                          |
-   |  [Run]                    [Cancel]       |
-   +-----------------------------------------+
-   ```
-   Field labels come from the DOM context observed during recording (the input field was labeled "Order number" on the page).
-6. User enters "5678" and taps **Run**
-7. **The agent takes over the browser:**
-   - Navigates to the search page (user sees the page load)
-   - Types "5678" into the order number field (user sees the text appear)
-   - Clicks the search button (user sees the click happen)
-   - Waits for results to load
-   - Each step shows a subtle highlight/pulse on the element being interacted with
-8. Extension shows completion:
-   ```
-   +-----------------------------------------+
-   |  Done! Order #5678                       |
-   |                                          |
-   |  Status: Shipped                         |
-   |  Tracking: 1Z999AA10123456784            |
-   |  ETA: Feb 18, 2026                       |
-   |                                          |
-   |  [Copy]  [Run Another]  [Close]          |
-   +-----------------------------------------+
-   ```
-
-Behind the scenes during Play:
-- Agent replays DOM interactions via Playwright/CDP control of the active tab
-- After each action, monitors the network to verify the expected API call was made
-- If the expected API response doesn't come (site changed), flags it to the user instead of guessing
-- Extracts result data from the API response (not by scraping the page)
+### Playing any workflow
+1. User navigates to a site with saved workflows
+2. Opens extension popup, sees workflows for this site
+3. Taps **Play**
+4. If the workflow needs input, a simple form appears (fields auto-labeled from recording context)
+5. Agent drives the browser visually, step by step
+6. User watches. Can pause or stop anytime.
+7. Completion card shows result.
 
 ### When things go wrong
-- **Site redesigned**: "This page looks different from when you recorded. The search button might have moved. Want to re-record this workflow?"
-- **Login expired**: "You're not logged in to VendorPortal. Please log in and try again."
-- **Unexpected error**: "Something went wrong on step 3 (clicking Search). The site might be having issues. Try again or re-record."
+- **Site redesigned**: "This page looks different from when you recorded. Want to re-record?"
+- **Login expired**: "You're not logged in. Please log in and try again."
+- **Step failed**: "Something went wrong on step 3. The site might be having issues. Try again or re-record."
 - **Never**: raw error codes, stack traces, or technical jargon
 
 ## 5. Architecture
@@ -543,6 +578,28 @@ The Playback Engine is the runtime that executes learned workflows in the user's
    - Map response fields to human-readable labels (from the WorkflowDefinition)
    - Show in the completion card
 
+7. **Pop-up / new window handling** (critical for Hypeddit use case):
+   - During recording: detect when a click opens a new window/tab (e.g., SoundCloud OAuth pop-up). Record interactions across windows, tagged with which window they belong to.
+   - During playback:
+     - When the agent clicks something that should open a pop-up, listen for `chrome.windows.onCreated` or `chrome.tabs.onCreated`
+     - Attach CDP to the new window/tab
+     - Execute the recorded actions in the pop-up (e.g., click "Allow" or "Follow")
+     - Detect when the pop-up closes (or close it if it doesn't auto-close)
+     - Return control to the main tab and continue the workflow
+   - Edge case: pop-up blocked by browser. Detect this and tell user: "A pop-up was blocked. Please allow pop-ups for this site and try again."
+
+8. **Gate loop detection** (Hypeddit-specific pattern):
+   - Download gates present a variable number of steps (2-6 gates depending on the track)
+   - During recording: detect the repeating pattern (click gate -> pop-up -> complete -> gate disappears -> next gate appears)
+   - During playback: loop through gates until the download button becomes active, rather than executing a fixed number of steps
+   - This "repeat until condition" pattern is common beyond Hypeddit (pagination, approval chains, multi-step forms)
+
+9. **Download detection**:
+   - Monitor for file download events via CDP (`Page.downloadWillBegin`, `Page.downloadProgress`)
+   - When download completes, capture the filename and path
+   - Show in the completion card: "Track Name - Artist downloaded. Saved to Downloads folder."
+   - If download doesn't start within timeout: "Download didn't start. The gates might not have completed. Try again."
+
 #### Playback states (what the user sees)
 
 ```
@@ -679,35 +736,44 @@ This tool handles sensitive data by nature. Non-negotiable principles:
 
 ## 9. MVP Scope
 
+### Validation target: Hypeddit song downloads
+The MVP is done when a user can: record one Hypeddit download (with all its gates and pop-ups), then press Play on a different track and watch the agent click through all the gates and download the song automatically.
+
 ### In scope (v0.1)
 - Chrome extension that records DOM events + network traffic
 - Manual start/stop recording via extension UI
-- Local Tap Engine that receives and stores recordings
+- Local MCPMAKER engine that receives and stores recordings
 - LLM analysis pipeline (Claude API via user's `ANTHROPIC_API_KEY`)
-- **Multi-step workflow generation** (chained API calls where step N's response feeds into step N+1)
+- **Multi-step workflow generation** (chained steps where step N's response feeds into step N+1)
 - Step chain detection: automatic identification of data flowing between sequential API calls
-- MCP server generation and local deployment
-- Auto-registration with Claude Code
-- Cookie-based and Bearer token auth patterns
-- Extension popup showing recorded workflows and their status
-- "Try it" validation before deploying
+- **Visual playback via CDP** - agent drives the browser, user watches
+- **Pop-up / new window handling** - detect, interact with, and close pop-ups during playback
+- **Gate loop detection** - variable number of gates, repeat until download unlocks
+- **Download detection** - monitor for file download completion via CDP events
+- Cookie-based and Bearer token auth patterns (SoundCloud/Spotify cookies from active session)
+- Extension popup: workflow list per site, Play button, recording controls
+- Step progress overlay during playback (checkmarks per completed gate)
+- Pause / Stop controls during playback
+- Plain-English error messages for all failure modes
+- MCP server generation (hidden in Advanced settings for developer use)
 
 ### Out of scope (post-MVP)
-- OAuth/login flow automation (user provides creds manually for MVP)
-- Workflow sharing / community library of unwrapped APIs
+- OAuth/login flow automation (user must already be logged into SoundCloud/Spotify)
+- Workflow sharing / community library
 - Cloud deployment of generated MCP servers
+- Batch playback ("download all 20 tracks in this playlist")
 - WebSocket / streaming API support
 - GraphQL-specific analysis
 - Visual workflow editor
-- Automatic re-recording when APIs change
+- Automatic re-recording when sites change
 - Mobile app observation
 - Non-Chrome browsers
 - Multi-provider LLM support (OpenAI, Gemini, local models)
 
 ### Stretch goals (if MVP goes fast)
-- "Tap Suggest" - extension detects repeated workflows and suggests recording
+- Batch mode: "Play for each track on this page" (huge value for DJs downloading sets)
+- Auto-detect when user is on a site with saved workflows (badge on extension icon)
 - Confidence scoring with visual indicators in extension
-- Conditional branching (different API paths based on response values)
 
 ## 10. Key Risks and Mitigations
 
