@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=380, initial-scale=1.0">
+  <title>MCPMAKER</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <!-- Setup View: API key entry -->
+  <div id="view-setup" class="view" hidden>
+    <div class="header">
+      <h1>MCPMAKER</h1>
+      <p class="subtitle">Set up in seconds</p>
+    </div>
+    <div class="content">
+      <label for="api-key-input">Paste your Anthropic key to get started</label>
+      <input
+        type="password"
+        id="api-key-input"
+        placeholder="sk-ant-..."
+        autocomplete="off"
+        spellcheck="false"
+      />
+      <button id="btn-save-key" class="btn-primary">Save</button>
+      <p id="key-error" class="error-text" hidden></p>
+    </div>
+  </div>
+
+  <!-- Main View: Site workflows -->
+  <div id="view-main" class="view" hidden>
+    <div class="header">
+      <h1 id="site-name" class="site-name">Loading...</h1>
+    </div>
+    <div class="content">
+      <div id="workflows-list" class="workflows-list">
+        <p class="empty-state" id="no-workflows">No workflows yet. Record one to get started.</p>
+      </div>
+      <button id="btn-record" class="btn-primary">Record New</button>
+    </div>
+    <div class="footer">
+      <button id="btn-settings" class="btn-link">Settings</button>
+    </div>
+  </div>
+
+  <!-- Recording View -->
+  <div id="view-recording" class="view" hidden>
+    <div class="header">
+      <div class="recording-indicator">
+        <span class="red-dot"></span>
+        <span>Recording...</span>
+      </div>
+    </div>
+    <div class="content">
+      <p class="event-count"><span id="event-count">0</span> actions captured</p>
+      <p class="recording-hint">Go about your task normally. We are watching and learning.</p>
+      <button id="btn-stop-recording" class="btn-danger">Stop Recording</button>
+    </div>
+  </div>
+
+  <!-- Learning View -->
+  <div id="view-learning" class="view" hidden>
+    <div class="header">
+      <h1>Learning your workflow...</h1>
+    </div>
+    <div class="content center">
+      <div class="spinner"></div>
+      <p class="learning-hint">Analyzing the steps you took to build a reusable workflow.</p>
+    </div>
+  </div>
+
+  <!-- Workflow Created View -->
+  <div id="view-created" class="view" hidden>
+    <div class="header">
+      <h1>Workflow Created</h1>
+    </div>
+    <div class="content">
+      <div class="workflow-summary">
+        <input type="text" id="workflow-name-input" class="workflow-name-input" />
+        <p class="step-count"><span id="step-count">0</span> steps</p>
+      </div>
+      <div class="button-group">
+        <button id="btn-rename" class="btn-secondary">Rename</button>
+        <button id="btn-record-again" class="btn-secondary">Record Again</button>
+        <button id="btn-done" class="btn-primary">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Parameter Input View -->
+  <div id="view-params" class="view" hidden>
+    <div class="header">
+      <h1>Fill in the details</h1>
+    </div>
+    <div class="content">
+      <form id="params-form" class="params-form"></form>
+      <div class="button-group">
+        <button id="btn-cancel-params" class="btn-secondary" type="button">Cancel</button>
+        <button id="btn-run-workflow" class="btn-primary" type="button">Run</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Playback View -->
+  <div id="view-playback" class="view" hidden>
+    <div class="header">
+      <h1>Running workflow...</h1>
+    </div>
+    <div class="content">
+      <div id="playback-steps" class="playback-steps"></div>
+      <div class="button-group">
+        <button id="btn-pause" class="btn-secondary">Pause</button>
+        <button id="btn-stop-playback" class="btn-danger">Stop</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Playback Complete View -->
+  <div id="view-complete" class="view" hidden>
+    <div class="header">
+      <h1>Done!</h1>
+    </div>
+    <div class="content">
+      <div id="result-summary" class="result-summary"></div>
+      <div class="button-group">
+        <button id="btn-play-again" class="btn-secondary">Run Again</button>
+        <button id="btn-close" class="btn-primary">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Error View -->
+  <div id="view-error" class="view" hidden>
+    <div class="header">
+      <h1>Something went wrong</h1>
+    </div>
+    <div class="content">
+      <p id="error-message" class="error-message"></p>
+      <div class="button-group">
+        <button id="btn-retry" class="btn-primary">Try Again</button>
+        <button id="btn-rerecord" class="btn-secondary">Re-record</button>
+        <button id="btn-cancel-error" class="btn-link">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="popup.js" type="module"></script>
+</body>
+</html>

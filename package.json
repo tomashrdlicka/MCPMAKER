@@ -1,0 +1,18 @@
+{
+  "name": "mcpmaker",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces",
+    "build:shared": "npm run build -w packages/shared",
+    "build:engine": "npm run build -w packages/engine",
+    "build:extension": "npm run build -w packages/extension",
+    "dev:engine": "npm run dev -w packages/engine",
+    "clean": "rm -rf packages/*/dist"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0"
+  }
+}
