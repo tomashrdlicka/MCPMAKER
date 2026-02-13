@@ -1,4 +1,4 @@
-# Tap - Watch. Learn. Replace the Browser.
+# MCPMAKER - Record Once. Press Play.
 
 **Status**: Design / MVP Planning
 **Date**: 2026-02-12
@@ -9,113 +9,181 @@
 
 Every day, millions of people repeat the same web workflows manually: check order status in a vendor portal, copy invoice data into a spreadsheet, submit expense reports across two systems, update CRM records from email threads.
 
-AI agents could do this for them. But agents need machine-friendly interfaces - APIs, MCP servers, structured endpoints. Most of these web apps don't have them. The legacy vendor portal from 2011 has no API. The government procurement system has no webhook. The internal HR tool has nothing but a browser UI.
+Browser automation tools exist (Stagehand, Browser-Use, Skyvern), but they all share the same fundamental problem: they figure out what to do at runtime via LLM calls. Every time the agent runs, it's guessing - reading the page, deciding what to click, hoping it finds the right button. It's slow, expensive, and unreliable. One UI change and the agent is lost.
 
-The current answer is browser automation: teach an agent to click buttons and fill forms like a human. This works, but it's slow, fragile, expensive (LLM calls per click), and fundamentally the wrong abstraction. The browser UI is a rendering layer for humans. Underneath it, nearly every web app is already making structured API calls. We just can't see them.
+**What if the agent already knew the exact steps?**
 
-**Tap watches you use the web app, captures the API calls happening underneath, and generates an MCP server that replaces the browser entirely.**
+MCPMAKER watches you do a workflow once, learns every click, every form field, every API call happening underneath. Then when you press Play, the agent executes the same workflow - visually, in your browser, step by step - but it already knows the path. No guessing. No LLM calls per click. Just precise, learned execution.
 
 ## 2. Product Vision
 
 ### The 30-second pitch
 
-Install a Chrome extension. Use your web apps normally for a few sessions. Tap correlates your clicks with the network requests underneath, identifies the real API patterns, and auto-generates an MCP server. Now any AI agent can do what you just did - but through clean API calls, not browser automation. No browser needed. No screenshots. No DOM selectors. Just direct, fast, reliable machine-to-machine communication.
+Install a Chrome extension. Do your tedious web workflow once while MCPMAKER records. Next time, open the extension and press Play. Watch as the agent navigates the site for you - clicking, typing, filling forms - exactly like you did, but handling it automatically. You see everything happening. You can stop it anytime. It just works.
+
+### What makes this different from every other automation tool
+
+| | Stagehand / Browser-Use | Traditional macros | **MCPMAKER** |
+|---|---|---|---|
+| Learns how? | Figures it out at runtime via LLM | Hardcoded selectors | **Watches you do it once** |
+| Handles change? | Re-guesses (expensive, unreliable) | Breaks immediately | **Knows the intent + API underneath, adapts intelligently** |
+| Cost per run | LLM calls per action | Free | **Minimal - path is pre-learned** |
+| User trust | Black box, might click wrong thing | Predictable but fragile | **User watches it work, can intervene** |
+| Setup | Developer writes code/prompts | Developer writes scripts | **Non-technical: record and play** |
+
+The secret weapon: MCPMAKER doesn't just record DOM clicks like a traditional macro. It captures the network API calls happening underneath each interaction. This gives it a dual understanding:
+
+- **Surface layer**: what buttons to click, what fields to fill (for visual playback)
+- **Deep layer**: what API calls those actions trigger (for validation and resilience)
+
+When a site redesigns its UI, a macro breaks. MCPMAKER can detect that the button moved but the underlying API is the same, and adapt.
 
 ### The compounding insight
 
-Every workflow Tap observes makes the browser layer less necessary. Over time, Tap builds a library of "unwrapped" APIs for web apps that never intended to have public APIs. The more people use it, the more apps get mapped. It's a network effect on API discovery.
+Every workflow MCPMAKER learns makes it smarter about that web app. Record "check order status" and "cancel order" on the same site, and MCPMAKER builds a progressively deeper map of the site's structure, navigation patterns, and API surface. It gets better the more you use it.
 
-### What Tap is NOT
+### UX Principles (Non-negotiable)
 
-- Not a browser automation tool (that's the thing it replaces)
-- Not a web scraper (it captures structured API calls, not HTML)
-- Not an API documentation tool (it generates runnable MCP servers, not docs)
-- Not a recording/replay tool (it parameterizes and generalizes, not just replays)
+1. **No technical language in the UI. Ever.** No "MCP server", no "API", no "endpoint", no "deploy." The user sees: Record, Play, My Workflows.
+2. **Everything through the extension.** No terminal. No config files. No separate app to install.
+3. **Record is just: click start, do your thing, click stop.** No naming schemas, no tagging, no categorization. MCPMAKER figures out what to call it from context.
+4. **Play is one click.** If the workflow needs input (e.g., which order number?), show a simple form with the fields pre-labeled from what was observed during recording.
+5. **The user watches the agent work.** The browser navigates visually. The user sees every click happen. This builds trust. They can pause or stop anytime.
+6. **Errors in plain English.** Never "401 Unauthorized" - instead "Your login session expired. Please log in again and try Play."
+7. **Zero setup beyond installing the extension.** First-time API key entry is a simple "Paste your key here" screen. That's the only setup.
 
 ## 3. How It Works (High Level)
 
 ```
-                  OBSERVE                    ANALYZE                    GENERATE
-             +--------------+          +----------------+         +----------------+
-   User      |   Chrome     |  record  |   LLM-powered  |  emit   |   MCP Server   |
-   uses  --> |   Extension  |  ------> |   Analysis     |  -----> |   Generator    |
-   web app   |              |          |   Pipeline     |         |                |
-             | - DOM events |          | - Correlate    |         | - Typed tools  |
-             | - Network    |          |   clicks->APIs |         | - Auth handler |
-             |   requests   |          | - Parameterize |         | - Ready to run |
-             | - Context    |          | - Validate     |         |                |
-             +--------------+          +----------------+         +----------------+
-                                                                        |
-                                                                        v
-                                                                  +-----------+
-                                                                  | AI agents |
-                                                                  | call MCP  |
-                                                                  | tools     |
-                                                                  | directly  |
-                                                                  +-----------+
+    RECORD                        LEARN                         PLAY
++---------------+          +----------------+          +------------------+
+|  User does    |  record  |  MCPMAKER      |  ready   |  User presses    |
+|  workflow     |  ------> |  analyzes:     |  ------> |  Play:           |
+|  once         |          |                |          |                  |
+| - Clicks      |          | - Which clicks |          | - Agent drives   |
+| - Types       |          |   trigger which|          |   the browser    |
+| - Navigates   |          |   API calls    |          | - User watches   |
+|               |          | - What varies  |          | - API calls      |
+| (Extension    |          |   vs what's    |          |   validate each  |
+|  captures     |          |   fixed        |          |   step worked    |
+|  everything)  |          | - Multi-step   |          | - Result shown   |
+|               |          |   chains       |          |   at the end     |
++---------------+          +----------------+          +------------------+
 ```
 
 ### Three phases:
 
-1. **Observe** - Extension records DOM interactions + network traffic in parallel, tagged with timestamps so they can be correlated
-2. **Analyze** - LLM examines recordings, identifies which network calls matter (vs analytics/tracking noise), extracts the parameterizable patterns, maps them to the user's intent
-3. **Generate** - Produces a working MCP server with typed tools matching the observed workflows
+1. **Record** - User does the workflow once (or a few times for better accuracy). Extension silently captures every DOM interaction AND every network request, linked by timestamps.
+2. **Learn** - Claude analyzes the recordings: filters noise, correlates clicks to API calls, identifies variable vs fixed parts, detects multi-step data chains. Produces a WorkflowDefinition (internal, user never sees this).
+3. **Play** - User presses Play in the extension popup. The agent drives the browser visually, executing each learned step. API call monitoring validates each step succeeded. User watches it happen in real time.
 
 ## 4. User Flow (Step by Step)
 
 ### First-time setup
-1. User installs Tap Chrome extension
-2. Extension adds a small floating "Tap" button to every page (can be minimized)
+1. User installs MCPMAKER Chrome extension from Chrome Web Store
+2. On first open, extension asks: "Paste your Anthropic API key" with a link to where to get one
+3. Done. No other setup.
 
 ### Recording a workflow
-1. User clicks "Start Recording" on the Tap button
-2. User names the workflow in plain English: "Check order status"
-3. User performs the workflow normally in the browser
-4. Extension silently records:
-   - Every DOM interaction (click, type, select, navigate) with element context
-   - Every network request/response (URL, method, headers, body, status, response body)
-   - Timestamps linking DOM events to network events
-   - Page URL and navigation changes
-5. User clicks "Stop Recording"
-6. Extension shows: "Captured 3 actions, 7 API calls. Record again for better accuracy or generate now?"
-
-### Improving accuracy (optional but encouraged)
-1. User records the same workflow 2-3 more times with different inputs
-   - First time: checked order #1234
-   - Second time: checked order #5678
-   - Third time: checked order #9012
-2. Multiple recordings let Tap identify:
-   - Which parts are variable (order ID) vs fixed (API endpoint structure)
-   - Which network calls are consistent (the real API) vs variable (ads, analytics)
-   - The required vs optional parameters
-
-### Generating the MCP server
-1. User clicks "Generate" in the extension popup
-2. Extension sends recordings to local Tap service (runs on localhost)
-3. Analysis pipeline processes recordings (10-30 seconds)
-4. User sees a preview:
+1. User opens the extension popup, taps **Record**
+2. A small red recording indicator appears in the corner of the page (like a screen recorder)
+3. User performs the workflow normally in the browser:
+   - Navigates to vendor portal
+   - Types order number
+   - Clicks search
+   - Reads the result
+4. User opens extension popup and taps **Stop**
+5. Extension shows a simple summary card:
    ```
-   Generated MCP Tool: check_order_status
-
-   Parameters:
-     - order_id (string, required): The order ID to look up
-
-   Returns:
-     - status (string): Current order status
-     - estimated_delivery (string): Expected delivery date
-     - tracking_number (string): Shipping tracking number
-
-   Based on: 3 recordings, 2 API calls per workflow
-   Confidence: High (consistent pattern across recordings)
+   +-----------------------------------------+
+   |  New Workflow Learned                    |
+   |                                          |
+   |  "Check order on VendorPortal"           |
+   |  (auto-named from page title + actions)  |
+   |                                          |
+   |  4 steps recorded                        |
+   |  Ready to play                           |
+   |                                          |
+   |  [Rename]  [Record Again]  [Done]        |
+   +-----------------------------------------+
    ```
-5. User can edit names, descriptions, parameter types
-6. User clicks "Deploy" - MCP server starts locally
+6. User can rename it or just tap Done
 
-### Using the generated MCP
-1. Any MCP-compatible agent (Claude Code, etc.) can now call `check_order_status`
-2. The tool makes the same API calls the browser would have made
-3. No browser launched. No DOM. No screenshots. Direct API calls.
-4. Response in milliseconds instead of seconds.
+**Behind the scenes** (user never sees this):
+- Extension captured DOM events + network traffic
+- Recordings sent to local MCPMAKER engine
+- Claude analyzes and produces a WorkflowDefinition
+- The workflow is now "learned" and ready
+
+### Improving accuracy (optional, prompted naturally)
+After the first successful Play, extension gently suggests:
+"Want to make this even more reliable? Record it one more time with a different order number."
+
+Multiple recordings help MCPMAKER identify:
+- Which parts are variable (order ID) vs fixed (URL patterns)
+- Which network calls are consistent (the real API) vs noise (ads, analytics)
+- The required vs optional parameters
+
+But one recording is enough to start. The tool works from recording one.
+
+### Playing a workflow
+1. User navigates to vendorportal.com
+2. Opens extension popup
+3. Sees their saved workflows for this site:
+   ```
+   +-----------------------------------------+
+   |  VendorPortal.com                        |
+   |                                          |
+   |  > Check order status          [Play]    |
+   |  > Download monthly invoices   [Play]    |
+   |  > Update shipping address     [Play]    |
+   |                                          |
+   |  [Record New]                            |
+   +-----------------------------------------+
+   ```
+4. Taps **Play** on "Check order status"
+5. If the workflow needs input, a simple form appears:
+   ```
+   +-----------------------------------------+
+   |  Check order status                      |
+   |                                          |
+   |  Order number: [          ]              |
+   |                                          |
+   |  [Run]                    [Cancel]       |
+   +-----------------------------------------+
+   ```
+   Field labels come from the DOM context observed during recording (the input field was labeled "Order number" on the page).
+6. User enters "5678" and taps **Run**
+7. **The agent takes over the browser:**
+   - Navigates to the search page (user sees the page load)
+   - Types "5678" into the order number field (user sees the text appear)
+   - Clicks the search button (user sees the click happen)
+   - Waits for results to load
+   - Each step shows a subtle highlight/pulse on the element being interacted with
+8. Extension shows completion:
+   ```
+   +-----------------------------------------+
+   |  Done! Order #5678                       |
+   |                                          |
+   |  Status: Shipped                         |
+   |  Tracking: 1Z999AA10123456784            |
+   |  ETA: Feb 18, 2026                       |
+   |                                          |
+   |  [Copy]  [Run Another]  [Close]          |
+   +-----------------------------------------+
+   ```
+
+Behind the scenes during Play:
+- Agent replays DOM interactions via Playwright/CDP control of the active tab
+- After each action, monitors the network to verify the expected API call was made
+- If the expected API response doesn't come (site changed), flags it to the user instead of guessing
+- Extracts result data from the API response (not by scraping the page)
+
+### When things go wrong
+- **Site redesigned**: "This page looks different from when you recorded. The search button might have moved. Want to re-record this workflow?"
+- **Login expired**: "You're not logged in to VendorPortal. Please log in and try again."
+- **Unexpected error**: "Something went wrong on step 3 (clicking Search). The site might be having issues. Try again or re-record."
+- **Never**: raw error codes, stack traces, or technical jargon
 
 ## 5. Architecture
 
@@ -429,39 +497,94 @@ interface AuthPattern {
 }
 ```
 
-### 5.4 MCP Server Generator
+### 5.4 Playback Engine
 
-Takes a `WorkflowDefinition` and produces a runnable MCP server.
+The Playback Engine is the runtime that executes learned workflows in the user's browser. This is the core of the "Press Play" experience.
 
-#### Generated server structure
+#### How playback works
+
+1. **Browser control**: Uses Chrome DevTools Protocol (CDP) to control the active tab. The extension's service worker connects to the tab via `chrome.debugger` API, which allows programmatic interaction without a separate browser process.
+
+2. **Step execution loop**:
+   ```
+   For each step in WorkflowDefinition.steps:
+     1. Locate the target element using recorded selectors (CSS path, aria labels, text content)
+     2. Highlight the element briefly (subtle pulse/outline) so the user sees what's happening
+     3. Execute the action (click, type, select)
+     4. Monitor network traffic for the expected API call
+     5. Validate the API response matches the expected shape
+     6. If multi-step: extract values from response for use in later steps
+     7. Wait for page to settle (DOM mutations stop, loading indicators disappear)
+     8. Proceed to next step
+   ```
+
+3. **Element location strategy** (resilience to UI changes):
+   - Primary: exact CSS selector from recording
+   - Fallback 1: aria-label + role matching
+   - Fallback 2: text content matching (button text, label text)
+   - Fallback 3: relative position (near a landmark element)
+   - If all fail: pause and tell user "Can't find the Search button. The page may have changed."
+   - **Never**: guess or click something that might be wrong
+
+4. **API validation during playback**:
+   - After each DOM action, the network interceptor watches for the expected API call
+   - If the expected call fires and returns the expected shape: step succeeded
+   - If the call fires but response is wrong (error, unexpected shape): pause and report
+   - If no call fires within timeout: the DOM action may not have worked, retry or report
+   - This dual-layer (DOM action + API validation) is the key reliability advantage over pure browser automation
+
+5. **Variable substitution**:
+   - User-provided inputs (from the pre-play form) are substituted into the appropriate DOM actions
+   - For typing actions: clear the field, type the new value
+   - For select/dropdown actions: select the option matching the input
+
+6. **Result extraction**:
+   - After the final step, extract result data from the API response (not from DOM scraping)
+   - Map response fields to human-readable labels (from the WorkflowDefinition)
+   - Show in the completion card
+
+#### Playback states (what the user sees)
+
 ```
-~/.tap/servers/{workflow-name}/
+[Play tapped] -> "Starting..." (0.5s)
+[Step 1]      -> Highlight element, execute action, brief checkmark
+[Step 2]      -> Highlight element, execute action, brief checkmark
+...
+[Final step]  -> Show completion card with extracted results
+
+If error at any step:
+[Step N]      -> Highlight element in orange, show plain-English error
+               -> Offer: [Retry Step] [Re-record] [Cancel]
+```
+
+#### Pause and intervention
+- User can click **Pause** at any time during playback
+- Playback freezes at the current step
+- User can manually interact with the page (e.g., complete a CAPTCHA, re-login)
+- Click **Resume** to continue from where it paused
+- Click **Stop** to abort
+
+### 5.5 MCP Server Layer (Internal)
+
+Under the hood, each learned workflow also generates an MCP-compatible tool definition. This serves two purposes:
+
+1. **For advanced users / developers**: Workflows can optionally be exposed as MCP servers for use with Claude Code, Claude Desktop, or other MCP clients. This is accessible via an "Advanced" section in the extension settings, not in the main UI.
+
+2. **For the MCPMAKER ecosystem**: When/if we build workflow sharing, MCP is the interchange format. A shared workflow can be consumed either via the Play button (visual) or via MCP (programmatic).
+
+#### Generated server structure (hidden from normal users)
+```
+~/.mcpmaker/servers/{workflow-name}/
   server.ts          # MCP server implementation
-  config.json        # Auth credentials (user-provided, gitignored)
-  workflow.json      # The WorkflowDefinition (for regeneration)
-  README.md          # Auto-generated docs
+  config.json        # Auth credentials
+  workflow.json      # The WorkflowDefinition
 ```
 
-#### Generated server behavior
-- Implements MCP protocol (stdio or HTTP transport)
-- Exposes one tool per workflow
-- Each tool:
-  1. Validates input parameters against the schema
-  2. Loads auth credentials from config.json
-  3. Executes the API calls in step order, substituting parameters
-  4. Extracts return fields from responses
-  5. Returns structured result
-- Error handling:
-  - Non-2xx response -> clear error message with status code
-  - Auth failure (401/403) -> "Credentials expired, please update config.json"
-  - Network error -> retry once, then report
-  - Unexpected response shape -> return raw response with warning
-
-#### MCP tool definition (what agents see)
+#### MCP tool definition
 ```json
 {
   "name": "check_order_status",
-  "description": "Look up the current status of an order by its order ID. Returns status, estimated delivery date, and tracking number.",
+  "description": "Look up the current status of an order by its order ID.",
   "inputSchema": {
     "type": "object",
     "properties": {
@@ -475,15 +598,7 @@ Takes a `WorkflowDefinition` and produces a runnable MCP server.
 }
 ```
 
-### 5.5 Deployment and Registration
-
-When the user clicks "Deploy":
-1. Tap Engine writes the generated server files
-2. Starts the MCP server process
-3. Registers it with Claude Code: `claude mcp add -s user {name} {command}`
-4. Confirms to user: "Your 'check_order_status' tool is live. Any AI agent can use it now."
-
-For MVP, servers run as local processes managed by Tap Engine.
+The MCP server executes workflows via direct API calls (no browser needed) - the fast, headless path for programmatic use. The Play button uses the visual browser path. Same WorkflowDefinition, two execution modes.
 
 ## 6. Data Model
 
