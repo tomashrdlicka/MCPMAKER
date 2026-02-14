@@ -42,3 +42,51 @@ We added a learning system to browser playback. First run: Claude figures out th
 - Make sure SoundCloud/Spotify are logged in so gates complete
 
 ---
+
+## Native macOS App (Swift/SwiftUI + Metal)
+**Tag**: #macos-native-app
+**Date**: 2026-02-14
+
+### Tweet 1 (Technical)
+Rebuilt our browser automation tool as a native macOS app. SwiftUI menubar, Metal shaders for the UI, Chrome DevTools Protocol over WebSocket for browser control. No extension install. No API keys. Just a lotus icon in your menubar. Click record, do your thing, press play.
+
+### Tweet 2 (Visual/Demo)
+A lotus flower in your menubar that breathes while recording and blooms when done. Metal shaders driving every frame. Frosted glass panels floating over your desktop. This is what browser automation looks like when you treat it as a consumer product, not a dev tool.
+
+### Tweet 3 (Problem/Solution)
+Chrome extensions have a trust problem. Users see "this extension can read all your data" and bounce. So we moved everything to a native Mac app that controls Chrome from the outside via CDP. Same power, zero extension permissions, and a UI that actually feels like macOS.
+
+### Tweet 4 (Architecture)
+The architecture: SwiftUI menubar app talks to Chrome via CDP WebSocket. A bundled Node.js engine runs locally for analysis. Claude calls route through our proxy for billing. Recording polls DOM events from an injected script. Playback executes actions through the same script. All orchestrated from Swift actors.
+
+### Tweet 5 (Thread Opener)
+We turned a Chrome extension into a native macOS app in one session. 40 files, 5300 lines of Swift/Metal/JS. Here's why we did it and what the architecture looks like.
+
+### What to Show Off
+**Format**: video
+**Duration**: 45s
+
+**UX Workflow to Demo**:
+1. Show the lotus icon idle in the menubar (subtle gradient)
+2. Click it, show the glass dropdown, click Record
+3. Enter a URL, Chrome launches
+4. Interact with the site (lotus breathing in menubar)
+5. Stop recording (lotus blooms, success flash)
+6. Show "Workflow captured" card with step count
+7. Click Play, show PiP panel floating with progress dots
+8. Completion: PiP shows checkmark, auto-dismisses
+
+**What Makes It Visual**:
+- Metal shader lotus animation transitions (idle -> breathing -> bloom -> success)
+- Frosted glass panels with light refraction
+- Floating PiP progress panel over the desktop
+- Chrome launching and being controlled with no extension visible
+- Clean menubar dropdown with workflow list
+
+**Framing Notes**:
+- Focus on the feel: smooth animations, glass effects, minimal chrome
+- Show it on a real site (Spotify, GitHub, etc.) to demonstrate practical use
+- Contrast with "install this extension" flow from before
+- End card: "No extension. No API key. Just press play."
+
+---
