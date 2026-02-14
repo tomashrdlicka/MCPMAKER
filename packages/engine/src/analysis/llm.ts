@@ -66,6 +66,18 @@ export function redactNetworkEvent(event: NetworkEvent): NetworkEvent {
 function getClient(): Anthropic {
   if (client) return client;
 
+  const proxyUrl = process.env.CLAUDE_PROXY_URL;
+
+  if (proxyUrl) {
+    // When using the cloud proxy, the proxy manages the real API key.
+    // We pass a placeholder so the SDK doesn't reject the missing key.
+    client = new Anthropic({
+      apiKey: 'proxy-managed',
+      baseURL: proxyUrl,
+    });
+    return client;
+  }
+
   const apiKey = getConfig('anthropic_api_key');
   if (!apiKey) {
     throw new Error(

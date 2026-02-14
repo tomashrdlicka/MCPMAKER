@@ -91,9 +91,23 @@ Store the Anthropic API key.
 **Response:** `{ configured: true }`
 
 ### `GET /config/api-key`
-Check if API key is configured.
+Check if API key is configured. Returns true if either a direct API key or `CLAUDE_PROXY_URL` is set.
 
 **Response:** `{ configured: boolean }`
+
+## Proxy Support
+
+The engine supports routing Claude calls through a billing proxy via the `CLAUDE_PROXY_URL` environment variable. When set, the Anthropic SDK's `baseURL` is overridden and `apiKey` is set to `'proxy-managed'` (the proxy injects the real key).
+
+```bash
+# Direct mode (default, requires user's API key)
+ANTHROPIC_API_KEY=sk-ant-... node engine/dist/server.js
+
+# Proxy mode (macOS app uses this)
+CLAUDE_PROXY_URL=https://api.mcpmaker.com/v1/claude node engine/dist/server.js
+```
+
+The proxy handles authentication, metering, and tier enforcement. The engine is unaware of which mode it runs in beyond the `baseURL` override.
 
 ## Intelligent Playback
 
