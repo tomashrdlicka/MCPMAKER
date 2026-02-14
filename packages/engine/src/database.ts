@@ -11,6 +11,7 @@ import type {
   Session,
   Workflow,
   WorkflowDefinition,
+  PlaybackLogEntry,
 } from './types.js';
 
 const MCPMAKER_DIR = join(homedir(), '.mcpmaker');
@@ -74,9 +75,21 @@ function createTables(): void {
       value TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS playback_logs (
+      id TEXT PRIMARY KEY,
+      workflow_id TEXT NOT NULL,
+      site_pattern TEXT NOT NULL DEFAULT '',
+      timestamp INTEGER NOT NULL,
+      data TEXT NOT NULL DEFAULT '{}',
+      outcome TEXT NOT NULL DEFAULT 'partial',
+      insights TEXT
+    );
+
     CREATE INDEX IF NOT EXISTS idx_sessions_workflow_id ON sessions(workflow_id);
     CREATE INDEX IF NOT EXISTS idx_workflow_sessions_workflow ON workflow_sessions(workflow_id);
     CREATE INDEX IF NOT EXISTS idx_workflow_sessions_session ON workflow_sessions(session_id);
+    CREATE INDEX IF NOT EXISTS idx_playback_logs_workflow ON playback_logs(workflow_id);
+    CREATE INDEX IF NOT EXISTS idx_playback_logs_site ON playback_logs(site_pattern);
   `);
 }
 
@@ -317,6 +330,57 @@ export function setConfig(key: string, value: string): void {
 export function getConfig(key: string): string | null {
   const row = db.prepare('SELECT value FROM config WHERE key = ?').get(key) as { value: string } | undefined;
   return row ? row.value : null;
+}
+
+// ---- Playback Log Methods ----
+
+export function savePlaybackLog(entry: PlaybackLogEntry): void {
+  const id = generateId();
+  db.prepare(
+    `INSERT INTO playback_logs (id, workflow_id, site_pattern, timestamp, data, outcome, insights)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    id,
+    entry.workflowId,
+    entry.sitePattern,
+    entry.timestamp,
+    JSON.stringify({ actions: entry.actions, totalActions: entry.totalActions, successfulActions: entry.successfulActions }),
+    entry.outcome,
+    entry.insights ?? null
+  );
+}
+
+export function getPlaybackLogs(workflowId: string, limit?: number): PlaybackLogEntry[] {
+  const sql = limit
+    ? 'SELECT * FROM playback_logs WHERE workflow_id = ? ORDER BY timestamp DESC LIMIT ?'
+    : 'SELECT * FROM playback_logs WHERE workflow_id = ? ORDER BY timestamp DESC';
+  const rows = (limit
+    ? db.prepare(sql).all(workflowId, limit)
+    : db.prepare(sql).all(workflowId)) as Record<string, unknown>[];
+
+  return rows.map((row) => {
+    const data = JSON.parse(row.data as string);
+    return {
+      workflowId: row.workflow_id as string,
+      sitePattern: row.site_pattern as string,
+      timestamp: row.timestamp as number,
+      actions: data.actions ?? [],
+      outcome: row.outcome as 'completed' | 'failed' | 'partial',
+      totalActions: data.totalActions ?? 0,
+      successfulActions: data.successfulActions ?? 0,
+      insights: (row.insights as string) || undefined,
+    };
+  });
+}
+
+export function getPlaybackInsights(sitePattern: string): string[] {
+  const rows = db.prepare(
+    `SELECT insights FROM playback_logs
+     WHERE site_pattern = ? AND insights IS NOT NULL AND insights != ''
+     ORDER BY timestamp DESC
+     LIMIT 10`
+  ).all(sitePattern) as { insights: string }[];
+  return rows.map((r) => r.insights);
 }
 
 // ---- Utility ----

@@ -5,7 +5,16 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import { getConfig } from '../database.js';
-import type { NetworkEvent, DOMEvent } from '../types.js';
+import type {
+  NetworkEvent,
+  DOMEvent,
+  NextActionRequest,
+  NextActionResponse,
+  WorkflowDefinition,
+  PageSnapshot,
+  PlaybackContext,
+  PlaybackMode,
+} from '../types.js';
 
 let client: Anthropic | null = null;
 
@@ -114,7 +123,7 @@ async function callWithRetry(fn: () => Promise<string>): Promise<string> {
 
 // ---- Core LLM Call ----
 
-async function chat(systemPrompt: string, userMessage: string): Promise<string> {
+export async function chat(systemPrompt: string, userMessage: string): Promise<string> {
   return callWithRetry(async () => {
     const anthropic = getClient();
     const response = await anthropic.messages.create({
@@ -158,6 +167,255 @@ async function chatJson<T>(systemPrompt: string, userMessage: string): Promise<T
   } catch (e) {
     throw new Error(`Failed to parse LLM JSON response: ${(e as Error).message}\nRaw response:\n${response}`);
   }
+}
+
+// ---- Multimodal (Vision) LLM Calls ----
+
+async function chatVision(
+  systemPrompt: string,
+  screenshotBase64: string,
+  textMessage: string
+): Promise<string> {
+  return callWithRetry(async () => {
+    const anthropic = getClient();
+    const response = await anthropic.messages.create({
+      model: MODEL,
+      max_tokens: 4096,
+      system: systemPrompt,
+      messages: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'image',
+              source: {
+                type: 'base64',
+                media_type: 'image/png',
+                data: screenshotBase64,
+              },
+            },
+            { type: 'text', text: textMessage },
+          ],
+        },
+      ],
+    });
+
+    const textBlock = response.content.find((b) => b.type === 'text');
+    if (!textBlock || textBlock.type !== 'text') {
+      throw new Error('No text response from Claude');
+    }
+    return textBlock.text;
+  });
+}
+
+async function chatVisionJson<T>(
+  systemPrompt: string,
+  screenshotBase64: string,
+  textMessage: string
+): Promise<T> {
+  const response = await chatVision(systemPrompt, screenshotBase64, textMessage);
+  const jsonStr = extractJson(response);
+  try {
+    return JSON.parse(jsonStr) as T;
+  } catch (e) {
+    throw new Error(`Failed to parse vision JSON response: ${(e as Error).message}\nRaw response:\n${response}`);
+  }
+}
+
+// ---- Intelligent Playback Functions ----
+
+const PLAYBACK_SYSTEM_PROMPT = `You are a browser automation agent. You see a screenshot of the current page and a structured list of interactive elements with their selectors.
+
+Your job: Look at the screenshot, understand what's on the page, and decide what action to take next to accomplish the workflow goal.
+
+RULES:
+- Reference elements by their "index" number from the interactive elements list
+- The screenshot shows what the user sees; the element list shows what you can interact with
+- If a modal/popup is blocking, dismiss it first (close button, X, or click outside)
+- If the target element is not visible, try scrolling
+- If an input field needs text, use type "input" with the value
+- If a dropdown needs selection, use type "select" with the value
+- If you need to press a key (Enter, Escape, Tab), use type "keydown" with the key name
+- If the page needs time to load, use type "wait"
+- Respond with type "done" when the goal is achieved
+- Respond with type "fail" only if the workflow absolutely cannot continue (explain why)
+
+CONTEXT AWARENESS:
+- You receive the full history of actions taken so far - use this to avoid repeating failed actions
+- If the previous action failed, you are in recovery mode - try a different approach
+- Consider what steps have been completed to understand where you are in the workflow
+- If you see a success confirmation (toast, redirect, updated content), the step may already be done
+
+RESPONSE FORMAT: Respond with ONLY a JSON object, no other text:
+{
+  "action": {
+    "type": "click|input|select|keydown|navigate|wait|scroll|done|fail",
+    "elementIndex": <number from interactive elements list, omit for done/fail/wait/scroll>,
+    "value": "<text for input/select/keydown/navigate, omit for click>",
+    "reasoning": "<brief explanation of why this action>",
+    "confidence": <0.0 to 1.0>
+  },
+  "stepAdvanced": <true if this action completes a workflow step>,
+  "workflowComplete": <true only when the entire goal is achieved>
+}`;
+
+function buildPlaybackUserMessage(
+  domSnapshot: PageSnapshot,
+  context: PlaybackContext,
+  mode: PlaybackMode
+): string {
+  const parts: string[] = [];
+
+  // Mode indicator
+  parts.push(`## Mode: ${mode.toUpperCase()}`);
+  if (mode === 'recovery' && context.lastError) {
+    parts.push(`RECOVERY: Previous action failed: "${context.lastError}"`);
+    parts.push('Try a different approach to accomplish the same goal.');
+  }
+
+  // Workflow intent
+  parts.push(`\n## Workflow Goal\n${context.workflowIntent}`);
+
+  // Current step
+  if (context.currentStepIntent) {
+    parts.push(`\n## Current Step (${(context.currentStepIndex ?? 0) + 1} of ${context.totalSteps ?? context.definedSteps.length})`);
+    parts.push(context.currentStepIntent);
+  }
+
+  // Defined steps for guided mode
+  if (mode === 'guided' && context.definedSteps.length > 0) {
+    parts.push('\n## Workflow Steps');
+    for (const step of context.definedSteps) {
+      const completed = context.completedActions.some(
+        (a) => a.success && a.action.reasoning?.includes(`step ${step.order}`)
+      );
+      parts.push(`${completed ? '[DONE]' : '[TODO]'} ${step.order}. ${step.description}`);
+    }
+  }
+
+  // Action history - full context for Claude
+  if (context.completedActions.length > 0) {
+    parts.push('\n## Action History');
+    for (const ca of context.completedActions) {
+      const status = ca.success ? 'OK' : `FAILED: ${ca.error}`;
+      const elInfo = ca.action.elementIndex !== undefined
+        ? ` (element #${ca.action.elementIndex})`
+        : '';
+      const valInfo = ca.action.value ? ` value="${ca.action.value}"` : '';
+      parts.push(`- ${ca.action.type}${elInfo}${valInfo} -> ${status} | ${ca.action.reasoning}`);
+    }
+  }
+
+  // Past insights from previous runs (learning over time)
+  if (context.pastInsights && context.pastInsights.length > 0) {
+    parts.push('\n## Insights From Previous Runs');
+    parts.push('Use these to avoid past mistakes and replicate what worked:');
+    for (const insight of context.pastInsights) {
+      parts.push(`- ${insight}`);
+    }
+  }
+
+  // Parameters
+  if (Object.keys(context.parameters).length > 0) {
+    parts.push('\n## Parameters');
+    for (const [key, val] of Object.entries(context.parameters)) {
+      parts.push(`- ${key}: ${val}`);
+    }
+  }
+
+  // Page state
+  parts.push(`\n## Current Page\nURL: ${domSnapshot.url}\nTitle: ${domSnapshot.title}`);
+
+  // Navigation context
+  if (domSnapshot.navigation.hasModal) {
+    parts.push(`\nA MODAL/DIALOG IS OPEN (selector: ${domSnapshot.navigation.modalSelector ?? 'unknown'}). Deal with it first.`);
+  }
+
+  // Headings
+  if (domSnapshot.headings.length > 0) {
+    parts.push('\n## Page Headings');
+    for (const h of domSnapshot.headings) {
+      parts.push(`${'#'.repeat(h.level)} ${h.text}`);
+    }
+  }
+
+  // Interactive elements
+  parts.push(`\n## Interactive Elements (${domSnapshot.interactiveElements.length} found)`);
+  for (const el of domSnapshot.interactiveElements) {
+    const desc: string[] = [`[${el.index}] <${el.tag}>`];
+    if (el.type) desc.push(`type="${el.type}"`);
+    if (el.role) desc.push(`role="${el.role}"`);
+    if (el.ariaLabel) desc.push(`aria-label="${el.ariaLabel}"`);
+    if (el.textContent) desc.push(`text="${el.textContent}"`);
+    if (el.placeholder) desc.push(`placeholder="${el.placeholder}"`);
+    if (el.name) desc.push(`name="${el.name}"`);
+    if (el.isDisabled) desc.push('DISABLED');
+    parts.push(desc.join(' '));
+  }
+
+  // Forms
+  if (domSnapshot.forms.length > 0) {
+    parts.push('\n## Forms');
+    for (const form of domSnapshot.forms) {
+      parts.push(`Form (${form.selector}):`);
+      for (const field of form.fields) {
+        const fieldDesc: string[] = [`  - element #${field.elementIndex}`];
+        if (field.label) fieldDesc.push(`label="${field.label}"`);
+        if (field.name) fieldDesc.push(`name="${field.name}"`);
+        if (field.type) fieldDesc.push(`type="${field.type}"`);
+        if (field.value) fieldDesc.push(`current="${field.value}"`);
+        if (field.required) fieldDesc.push('REQUIRED');
+        parts.push(fieldDesc.join(' '));
+      }
+    }
+  }
+
+  return parts.join('\n');
+}
+
+export async function getNextPlaybackAction(
+  request: NextActionRequest
+): Promise<NextActionResponse> {
+  const userMessage = buildPlaybackUserMessage(
+    request.domSnapshot,
+    request.context,
+    request.mode
+  );
+
+  return chatVisionJson<NextActionResponse>(
+    PLAYBACK_SYSTEM_PROMPT,
+    request.screenshot,
+    userMessage
+  );
+}
+
+export async function extractWorkflowIntent(
+  definition: WorkflowDefinition,
+  parameters: Record<string, string | number | boolean>
+): Promise<string> {
+  const systemPrompt = `You are a workflow summarizer. Given a workflow definition and parameters, produce a clear, plain-English description of what this workflow should accomplish. Be specific about the goal and expected outcome. Keep it to 2-3 sentences.`;
+
+  const steps = definition.steps.map((s) => ({
+    order: s.order,
+    description: s.description,
+    action: s.domAction
+      ? `${s.domAction.type} on "${s.domAction.ariaLabel || s.domAction.textContent || s.domAction.selector}"`
+      : 'API call',
+  }));
+
+  const userMessage = `Workflow: ${definition.name}
+Description: ${definition.description}
+Base URL: ${definition.baseUrl}
+
+Steps:
+${JSON.stringify(steps, null, 2)}
+
+Parameters being used:
+${JSON.stringify(parameters, null, 2)}
+
+Summarize what this workflow should do in plain English.`;
+
+  return chat(systemPrompt, userMessage);
 }
 
 // ---- Analysis Prompt Functions ----

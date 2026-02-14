@@ -13,10 +13,16 @@ import {
   stopMcpServer,
   getMcpServerStatus,
 } from './mcp-generator.js';
-import { resetClient } from './analysis/llm.js';
+import { resetClient, getNextPlaybackAction, extractWorkflowIntent } from './analysis/llm.js';
 import type {
   Session,
   PlaybackState,
+  NextActionRequest,
+  NextActionResponse,
+  IntentRequest,
+  IntentResponse,
+  PlaybackLogRequest,
+  PlaybackLogResponse,
 } from './types.js';
 
 // ---- CORS ----
@@ -428,6 +434,82 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
     if (method === 'GET' && pathname === '/config/api-key') {
       const apiKey = db.getConfig('anthropic_api_key');
       sendJson(res, 200, { configured: !!apiKey });
+      return;
+    }
+
+    // ---- Playback (Intelligent) ----
+
+    // POST /playback/next-action - Get next action from Claude
+    if (method === 'POST' && pathname === '/playback/next-action') {
+      const apiKey = db.getConfig('anthropic_api_key');
+      if (!apiKey) {
+        sendError(res, 400, 'Anthropic API key not configured. Please set it via POST /config/api-key first.');
+        return;
+      }
+
+      const body = await parseJsonBody<NextActionRequest>(req);
+      if (!body.screenshot || !body.domSnapshot || !body.context || !body.mode) {
+        sendError(res, 400, 'Missing required fields: screenshot, domSnapshot, context, mode');
+        return;
+      }
+
+      const result = await getNextPlaybackAction(body);
+      sendJson(res, 200, result);
+      return;
+    }
+
+    // POST /playback/intent - Extract workflow intent
+    if (method === 'POST' && pathname === '/playback/intent') {
+      const apiKey = db.getConfig('anthropic_api_key');
+      if (!apiKey) {
+        sendError(res, 400, 'Anthropic API key not configured. Please set it via POST /config/api-key first.');
+        return;
+      }
+
+      const body = await parseJsonBody<IntentRequest>(req);
+      if (!body.definition || !body.parameters) {
+        sendError(res, 400, 'Missing required fields: definition, parameters');
+        return;
+      }
+
+      const intent = await extractWorkflowIntent(body.definition, body.parameters);
+      sendJson(res, 200, { intent } satisfies IntentResponse);
+      return;
+    }
+
+    // POST /playback/log - Save a playback log entry
+    if (method === 'POST' && pathname === '/playback/log') {
+      const apiKey = db.getConfig('anthropic_api_key');
+      if (!apiKey) {
+        sendError(res, 400, 'Anthropic API key not configured. Please set it via POST /config/api-key first.');
+        return;
+      }
+
+      const body = await parseJsonBody<PlaybackLogRequest>(req);
+      if (!body.entry) {
+        sendError(res, 400, 'Missing required field: entry');
+        return;
+      }
+
+      db.savePlaybackLog(body.entry);
+      sendJson(res, 200, { saved: true } satisfies PlaybackLogResponse);
+      return;
+    }
+
+    // GET /playback/insights/:workflowId - Get insights for a workflow's site
+    const insightsMatch = matchRoute('/playback/insights/:workflowId', pathname);
+    if (method === 'GET' && insightsMatch) {
+      const apiKey = db.getConfig('anthropic_api_key');
+      if (!apiKey) {
+        sendError(res, 400, 'Anthropic API key not configured. Please set it via POST /config/api-key first.');
+        return;
+      }
+
+      // Look up the workflow to get its sitePattern
+      const workflow = db.getWorkflow(insightsMatch.params.workflowId);
+      const sitePattern = workflow?.sitePattern ?? insightsMatch.params.workflowId;
+      const insights = db.getPlaybackInsights(sitePattern);
+      sendJson(res, 200, { insights });
       return;
     }
 
